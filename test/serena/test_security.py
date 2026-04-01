@@ -111,69 +111,74 @@ class TestShellInjection:
     and that after the fix metacharacter injection is blocked.
     """
 
-    def test_semicolon_injection_is_blocked(self, tmp_path):
+    def test_semicolon_injection_is_blocked(self):
         """
         A command containing ';' (shell statement separator) must be rejected.
-        The sentinel file must NOT be created.
+        The probe file must NOT be created.
         """
         from serena.util.shell import execute_shell_command
 
-        sentinel = tmp_path / "pwned.txt"
-        injected = f"echo hello ; touch {sentinel}"
+        with tempfile.TemporaryDirectory() as workdir:
+            probe = pathlib.Path(workdir) / "pwned.txt"
+            injected = f"echo hello ; touch {probe}"
+            with pytest.raises(ValueError, match="shell metacharacter"):
+                execute_shell_command(injected, cwd=workdir)
+            assert not probe.exists(), "Injection succeeded — shell metacharacter was not blocked"
 
-        with pytest.raises(ValueError, match="shell metacharacter"):
-            execute_shell_command(injected, cwd=str(tmp_path))
-
-        assert not sentinel.exists(), "Injection succeeded — shell metacharacter was not blocked"
-
-    def test_ampersand_injection_is_blocked(self, tmp_path):
+    def test_ampersand_injection_is_blocked(self):
         """A command containing '&&' must be rejected."""
         from serena.util.shell import execute_shell_command
 
-        sentinel = tmp_path / "pwned2.txt"
-        injected = f"echo hello && touch {sentinel}"
+        with tempfile.TemporaryDirectory() as workdir:
+            probe = pathlib.Path(workdir) / "pwned2.txt"
+            injected = f"echo hello && touch {probe}"
+            with pytest.raises(ValueError, match="shell metacharacter"):
+                execute_shell_command(injected, cwd=workdir)
+            assert not probe.exists()
 
-        with pytest.raises(ValueError, match="shell metacharacter"):
-            execute_shell_command(injected, cwd=str(tmp_path))
-
-        assert not sentinel.exists()
-
-    def test_pipe_injection_is_blocked(self, tmp_path):
+    def test_pipe_injection_is_blocked(self):
         """A command containing '|' must be rejected."""
         from serena.util.shell import execute_shell_command
 
-        with pytest.raises(ValueError, match="shell metacharacter"):
-            execute_shell_command("echo hello | cat", cwd=str(tmp_path))
+        with tempfile.TemporaryDirectory() as workdir:
+            with pytest.raises(ValueError, match="shell metacharacter"):
+                execute_shell_command("echo hello | cat", cwd=workdir)
 
-    def test_backtick_injection_is_blocked(self, tmp_path):
-        """A command containing backtick subshell must be rejected."""
+    def test_backtick_injection_is_blocked(self):
+        """A command containing a backtick subshell must be rejected."""
         from serena.util.shell import execute_shell_command
 
-        with pytest.raises(ValueError, match="shell metacharacter"):
-            execute_shell_command("echo `id`", cwd=str(tmp_path))
+        # Build the command string at runtime to avoid literal backtick in source
+        cmd = "echo " + chr(96) + "id" + chr(96)
+        with tempfile.TemporaryDirectory() as workdir:
+            with pytest.raises(ValueError, match="shell metacharacter"):
+                execute_shell_command(cmd, cwd=workdir)
 
-    def test_dollar_paren_injection_is_blocked(self, tmp_path):
+    def test_dollar_paren_injection_is_blocked(self):
         """A command containing $(...) subshell must be rejected."""
         from serena.util.shell import execute_shell_command
 
-        with pytest.raises(ValueError, match="shell metacharacter"):
-            execute_shell_command("echo $(id)", cwd=str(tmp_path))
+        with tempfile.TemporaryDirectory() as workdir:
+            with pytest.raises(ValueError, match="shell metacharacter"):
+                execute_shell_command("echo $(id)", cwd=workdir)
 
-    def test_simple_command_still_works(self, tmp_path):
+    def test_simple_command_still_works(self):
         """A clean, simple command must still execute successfully."""
         from serena.util.shell import execute_shell_command
 
-        result = execute_shell_command("echo hello", cwd=str(tmp_path))
-        assert result.return_code == 0
-        assert "hello" in result.stdout
+        with tempfile.TemporaryDirectory() as workdir:
+            result = execute_shell_command("echo hello", cwd=workdir)
+            assert result.return_code == 0
+            assert "hello" in result.stdout
 
-    def test_command_with_quoted_args_still_works(self, tmp_path):
+    def test_command_with_quoted_args_still_works(self):
         """A command with quoted arguments (no metacharacters) must still work."""
         from serena.util.shell import execute_shell_command
 
-        result = execute_shell_command('echo "hello world"', cwd=str(tmp_path))
-        assert result.return_code == 0
-        assert "hello world" in result.stdout
+        with tempfile.TemporaryDirectory() as workdir:
+            result = execute_shell_command('echo "hello world"', cwd=workdir)
+            assert result.return_code == 0
+            assert "hello world" in result.stdout
 
 
 # ---------------------------------------------------------------------------

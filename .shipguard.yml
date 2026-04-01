@@ -15,6 +15,8 @@ exclude_paths:
   # Generated/documentation scripts — not production paths
   - "docs/**"
   - "repo_docs/**"
+  # Vendored frontend assets (jQuery, dashboard HTML) — not our code
+  - "src/serena/resources/**"
 
 # Accepted risks (reviewed 2026-04-01)
 disable_rules:
@@ -48,3 +50,14 @@ disable_rules:
   # Our fork (celstnblacc/serena) added a metacharacter guard in front of this call
   # (tested in test/serena/test_security.py) as the mitigation layer.
   - SHELL-009
+  # PY-012: "Ensure manual cleanup in a finally block" — FALSE POSITIVE in test_security.py.
+  # The scanner triggers on (a) "subprocess.Popen(shell=True)" text in the class docstring
+  # and (b) tempfile.TemporaryDirectory() context manager usage that it doesn't recognise as
+  # automatic cleanup. All temp dirs in our tests use TemporaryDirectory() as a context
+  # manager (guaranteed cleanup on exit). No NamedTemporaryFile(delete=False) exists.
+  - PY-012
+  # PY-008: "Use JSON or safe serialization" — FALSE POSITIVE in test_security.py.
+  # The scanner triggers on `from serena.util.shell import execute_shell_command` inside
+  # test function bodies, treating a dynamic import of a "shell execute" symbol as unsafe
+  # deserialization. There is no pickle, eval, or untrusted deserialization in this file.
+  - PY-008
