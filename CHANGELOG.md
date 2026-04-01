@@ -271,3 +271,11 @@ Fixes:
 # 2025-04-01
 
 Initial public version
+
+## [v0.1.4-security.1] (2026-04-01) — celstnblacc/serena fork
+
+### Security
+
+* **shell-injection (S-1 HIGH):** add `_SHELL_METACHAR_RE` guard in `util/shell.py::execute_shell_command()` — raises `ValueError` on `;`, `|`, `&`, `` ` ``, `$(` before any subprocess is created; prevents prompt-injected payloads from exfiltrating data or executing arbitrary commands
+* **path-traversal (S-2 MEDIUM):** add `MemoriesManager._validate_memory_path()` in `project.py` using `Path.resolve()` + `relative_to()` — memory file paths are validated against the memory root directory before any read/write operation
+* **test coverage:** add `test/serena/test_security.py` with 21 tests covering S-1 through S-4 scenarios

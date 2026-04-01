@@ -78,6 +78,20 @@ class MemoriesManager:
     def _is_global(self, name: str) -> bool:
         return name == self.GLOBAL_TOPIC or name.startswith(self.GLOBAL_TOPIC + "/")
 
+    @staticmethod
+    def _validate_memory_path(resolved_path: Path, allowed_root: Path) -> None:
+        """Raise ValueError if resolved_path is not strictly inside allowed_root.
+
+        SEC-001: prevents path-traversal via '../..' segments in memory names.
+        """
+        try:
+            resolved_path.relative_to(allowed_root)
+        except ValueError:
+            raise ValueError(
+                f"Memory path '{resolved_path}' escapes allowed root '{allowed_root}'. "
+                "Path traversal via '..' segments is not permitted in memory names."
+            )
+
     def get_memory_file_path(self, name: str) -> Path:
         # Strip .md extension if present
         name = name.replace(".md", "")
@@ -93,9 +107,13 @@ class MemoriesManager:
             filename = f"{parts[-1]}.md"
             if len(parts) > 1:
                 subdir = self._global_memory_dir / "/".join(parts[:-1])
+                candidate = (subdir / filename).resolve()
+                self._validate_memory_path(candidate, self._global_memory_dir.resolve())
                 subdir.mkdir(parents=True, exist_ok=True)
-                return subdir / filename
-            return self._global_memory_dir / filename
+                return candidate
+            candidate = (self._global_memory_dir / filename).resolve()
+            self._validate_memory_path(candidate, self._global_memory_dir.resolve())
+            return candidate
 
         # Project-local memory
         assert self._project_memory_dir is not None, "Project dir was not passed at initialization"
@@ -105,10 +123,14 @@ class MemoriesManager:
         if len(parts) > 1:
             # Create subdirectory path
             subdir = self._project_memory_dir / "/".join(parts[:-1])
+            candidate = (subdir / filename).resolve()
+            self._validate_memory_path(candidate, self._project_memory_dir.resolve())
             subdir.mkdir(parents=True, exist_ok=True)
-            return subdir / filename
+            return candidate
 
-        return self._project_memory_dir / filename
+        candidate = (self._project_memory_dir / filename).resolve()
+        self._validate_memory_path(candidate, self._project_memory_dir.resolve())
+        return candidate
 
     def _check_write_access(self, name: str, is_tool_context: bool) -> None:
         # in tool context, memories can be read-only
