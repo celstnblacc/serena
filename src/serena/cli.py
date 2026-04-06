@@ -298,8 +298,24 @@ class TopLevelCommands(AutoRegisteringGroup):
                 "Positional project arg is deprecated; use --project instead. Used: %s",
                 project_file,
             )
+        # Ensure SIGTERM and SIGHUP trigger a clean SystemExit so the
+        # server_lifespan finally-block runs (agent.shutdown → LSP cleanup).
+        # Without this, Python's default SIGTERM disposition kills the process
+        # immediately and language-server children are orphaned.
+        import signal as _signal
+
+        def _handle_term(signum: int, frame: object) -> None:
+            log.info("Received signal %s — initiating graceful shutdown", signum)
+            raise SystemExit(0)
+
+        _signal.signal(_signal.SIGTERM, _handle_term)
+        _signal.signal(_signal.SIGHUP, _handle_term)
+
         log.info("Starting MCP server …")
-        server.run(transport=transport)
+        try:
+            server.run(transport=transport)
+        except (SystemExit, KeyboardInterrupt):
+            pass
 
     @staticmethod
     @click.command(

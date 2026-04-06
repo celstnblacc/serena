@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
-# Run serena tests via uv (required — bare pytest can't find the serena module)
+# Run serena tests via the venv created by uv.
+# Must use --extra dev: pytest is an optional-dependency, not a dependency-group,
+# so plain `uv sync --dev` does not install it.
 set -e
-uv run pytest test/serena/test_security.py -q
+uv sync --extra dev -q
+.venv/bin/pytest test/serena/test_security.py -q
