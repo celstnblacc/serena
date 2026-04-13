@@ -67,8 +67,8 @@ def load_yaml(path: str, comment_normalisation: YamlCommentNormalisation = YamlC
     :return: the loaded commented map
     """
     with open(path, encoding=SERENA_FILE_ENCODING) as f:
-        yaml = _create_yaml(preserve_comments=True)
-        commented_map: CommentedMap | None = yaml.load(f)
+        _yml = _create_yaml(preserve_comments=True)
+        commented_map: CommentedMap | None = _yml.load(f)
     if commented_map is None:  # ruamel returns None for empty documents, but we want an empty CommentedMap
         commented_map = CommentedMap()
     normalise_yaml_comments(commented_map, comment_normalisation)
@@ -181,10 +181,24 @@ def normalise_yaml_comments(commented_map: CommentedMap, comment_normalisation: 
 
 
 def save_yaml(path: str, data: dict | CommentedMap, preserve_comments: bool = True) -> None:
-    yaml = _create_yaml(preserve_comments)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding=SERENA_FILE_ENCODING) as f:
-        yaml.dump(data, f)
+    import tempfile
+
+    _yml = _create_yaml(preserve_comments)
+    dir_path = os.path.dirname(path) or "."
+    os.makedirs(dir_path, exist_ok=True)
+    # Atomic write: dump to a temp file in the same directory then rename.
+    # This prevents partial/corrupt YAML on crash or interrupt.
+    fd, tmp_path = tempfile.mkstemp(dir=dir_path, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding=SERENA_FILE_ENCODING) as tmp_f:
+            _yml.dump(data, tmp_f)
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def yaml_comment_entry_is_empty(comment_entry: Any) -> bool:

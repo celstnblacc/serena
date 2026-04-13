@@ -2,6 +2,11 @@
 # Run serena tests via the venv created by uv.
 # Must use --extra dev: pytest is an optional-dependency, not a dependency-group,
 # so plain `uv sync --dev` does not install it.
+#
+# Unset GIT_DIR and GIT_WORK_TREE: the pre-commit environment sets these, which
+# causes uv's git fetch (for the pywebview git-source dependency) to fail with
+# "not a git repository" because git's fetch subprocess sees the wrong .git path.
 set -e
+unset GIT_DIR GIT_WORK_TREE
 uv sync --extra dev -q
 .venv/bin/pytest test/serena/test_security.py -q

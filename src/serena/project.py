@@ -146,11 +146,26 @@ class MemoriesManager:
             return f.read()
 
     def save_memory(self, name: str, content: str, is_tool_context: bool) -> str:
+        import tempfile
+
         self._check_not_ignored(name)
         self._check_write_access(name, is_tool_context)
         memory_file_path = self.get_memory_file_path(name)
-        with open(memory_file_path, "w", encoding=self._encoding) as f:
-            f.write(content)
+        # Backup existing file before overwriting so a crash mid-write is recoverable.
+        if memory_file_path.exists():
+            shutil.copy2(memory_file_path, memory_file_path.with_suffix(".bak"))
+        # Atomic write: write to temp then rename — prevents partial content on interrupt.
+        fd, tmp_path = tempfile.mkstemp(dir=memory_file_path.parent, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding=self._encoding) as tmp_f:
+                tmp_f.write(content)
+            os.replace(tmp_path, memory_file_path)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
         return f"Memory {name} written."
 
     class MemoriesList:

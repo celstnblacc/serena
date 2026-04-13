@@ -46,6 +46,32 @@ from solidlsp.util.subprocess_util import subprocess_kwargs
 log = logging.getLogger(__name__)
 
 _MAX_CONTENT_WIDTH = 100
+
+# Mapping from Language enum value to the binary that must be on PATH for the LS to start.
+# Covers the most common installations; unlisted languages skip the binary check.
+_LS_BINARY_MAP: dict[str, str] = {
+    "python": "pylsp",
+    "typescript": "typescript-language-server",
+    "javascript": "typescript-language-server",
+    "go": "gopls",
+    "rust": "rust-analyzer",
+    "java": "jdtls",
+    "csharp": "omnisharp",
+    "ruby": "solargraph",
+    "php": "intelephense",
+    "clojure": "clojure-lsp",
+    "elixir": "elixir-ls",
+    "swift": "sourcekit-lsp",
+    "bash": "bash-language-server",
+    "powershell": "pwsh",
+}
+
+
+def _ls_binary_for_language(lang: Language) -> str | None:
+    """Return the expected PATH binary for a language's language server, or None if unknown."""
+    return _LS_BINARY_MAP.get(lang.value)
+
+
 _MODES_EXPLANATION = f"""\b\nBuilt-in mode names or paths to custom mode YAMLs with which to 
 override the default modes defined in the global Serena configuration or 
 the active project.
@@ -232,6 +258,13 @@ class TopLevelCommands(AutoRegisteringGroup):
         default=False,
         help="Auto-detect project from current working directory (searches for .serena/project.yml or .git, falls back to CWD). Intended for CLI-based agents like Claude Code, Gemini and Codex.",
     )
+    @click.option(
+        "--no-shell",
+        is_flag=True,
+        default=False,
+        help="Disable the execute_shell_command tool entirely. Serena will refuse all shell execution requests. "
+        "Recommended for read-only or untrusted contexts.",
+    )
     def start_mcp_server(
         project: str | None,
         project_file_arg: str | None,
@@ -248,6 +281,7 @@ class TopLevelCommands(AutoRegisteringGroup):
         log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] | None,
         trace_lsp_communication: bool | None,
         tool_timeout: float | None,
+        no_shell: bool,
     ) -> None:
         # initialize logging, using INFO level initially (will later be adjusted by SerenaAgent according to the config)
         #   * memory log handler (for use by GUI/Dashboard)
@@ -268,6 +302,13 @@ class TopLevelCommands(AutoRegisteringGroup):
 
         log.info("Initializing Serena MCP server")
         log.info("Storing logs in %s", log_path)
+
+        # Apply --no-shell flag before any tool can run.
+        if no_shell:
+            from serena.util.shell import set_shell_enabled
+
+            set_shell_enabled(False)
+            log.info("Shell execution disabled (--no-shell flag set)")
 
         # Handle --project-from-cwd flag
         if project_from_cwd:
@@ -421,6 +462,88 @@ class TopLevelCommands(AutoRegisteringGroup):
         if port is not None:
             run_kwargs["port"] = port
         server.run(**run_kwargs)
+
+    @staticmethod
+    @click.command(
+        "doctor", help="Diagnose Serena environment and configuration.", context_settings={"max_content_width": _MAX_CONTENT_WIDTH}
+    )
+    @click.option("--json", "output_json", is_flag=True, default=False, help="Output results as JSON.")
+    def doctor(output_json: bool) -> None:
+        """Check Serena installation health: config, registered projects, and language server binaries."""
+        import json as _json
+        import shutil
+
+        checks: list[dict] = []
+
+        def _check(name: str, ok: bool, detail: str) -> None:
+            checks.append({"name": name, "ok": ok, "detail": detail})
+
+        # --- 1. Serena home directory ---
+        paths = SerenaPaths()
+        home = paths.serena_user_home_dir
+        home_exists = os.path.isdir(home)
+        home_writable = home_exists and os.access(home, os.W_OK)
+        _check("serena_home_exists", home_exists, home)
+        _check("serena_home_writable", home_writable, home if home_writable else f"{home} is not writable")
+
+        # --- 2. Global config file ---
+        config_file = os.path.join(home, "serena_config.yml")
+        config_ok = False
+        config_detail = config_file
+        if not os.path.isfile(config_file):
+            config_detail = f"{config_file} not found (will be created on first run)"
+            config_ok = True  # absence is acceptable — defaults apply
+        else:
+            try:
+                SerenaConfig.from_config_file()
+                config_ok = True
+            except Exception as exc:
+                config_detail = f"parse error: {exc}"
+        _check("serena_config_parseable", config_ok, config_detail)
+
+        # --- 3. Registered projects ---
+        try:
+            cfg = SerenaConfig.from_config_file()
+            projects = cfg.registered_projects
+        except Exception:
+            projects = []
+
+        for rp in projects:
+            proj_root = str(rp.project_root)
+            exists = os.path.isdir(proj_root)
+            _check(f"project:{rp.project_name}", exists, proj_root if exists else f"{proj_root} — directory not found")
+            # Check language server binaries for each configured language.
+            for lang in rp.project_config.languages:
+                ls_binary = _ls_binary_for_language(lang)
+                if ls_binary:
+                    found = shutil.which(ls_binary) is not None
+                    _check(
+                        f"ls_binary:{lang.value}",
+                        found,
+                        ls_binary if found else f"{ls_binary} not found on PATH",
+                    )
+
+        # --- 4. Shell execution state ---
+        from serena.util.shell import is_shell_enabled
+
+        _check("shell_enabled", True, "enabled" if is_shell_enabled() else "disabled (--no-shell)")
+
+        # --- Output ---
+        all_ok = all(c["ok"] for c in checks)
+        if output_json:
+            click.echo(_json.dumps({"ok": all_ok, "checks": checks}, indent=2))
+        else:
+            width = max((len(c["name"]) for c in checks), default=20) + 2
+            for c in checks:
+                status = "OK  " if c["ok"] else "FAIL"
+                click.echo(f"  [{status}]  {c['name']:<{width}} {c['detail']}")
+            click.echo()
+            if all_ok:
+                click.echo("Serena environment looks healthy.")
+            else:
+                failed = [c["name"] for c in checks if not c["ok"]]
+                click.echo(f"Issues found: {', '.join(failed)}")
+                raise SystemExit(1)
 
     @staticmethod
     @click.command(

@@ -68,10 +68,24 @@ class CodeEditor(Generic[TSymbol], ABC):
             self._save_edited_file(edited_file)
 
     def _save_edited_file(self, edited_file: "CodeEditor.EditedFile") -> None:
+        import tempfile
+
         abs_path = os.path.join(self.project_root, edited_file.relative_path)
         new_contents = edited_file.get_contents()
-        with open(abs_path, "w", encoding=self.encoding, newline=self.newline) as f:
-            f.write(new_contents)
+        dir_path = os.path.dirname(abs_path)
+        # Atomic write: write to a temp file in the same directory then rename.
+        # Prevents partial writes from corrupting source files on crash or interrupt.
+        fd, tmp_path = tempfile.mkstemp(dir=dir_path, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding=self.encoding, newline=self.newline) as tmp_f:
+                tmp_f.write(new_contents)
+            os.replace(tmp_path, abs_path)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     @abstractmethod
     def _find_unique_symbol(self, name_path: str, relative_file_path: str) -> TSymbol:

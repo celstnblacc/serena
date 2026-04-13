@@ -17,11 +17,9 @@ Findings covered:
 from __future__ import annotations
 
 import pathlib
-import subprocess
 import tempfile
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # SEC-001 — Memory path traversal
@@ -51,7 +49,7 @@ class TestMemoryPathTraversal:
             "../../../tmp/evil",
             "sub/../../etc/shadow",
             "sub/../../../etc/hosts",
-            "global/../../evil",           # crosses global boundary
+            "global/../../evil",  # crosses global boundary
         ],
     )
     def test_traversal_name_raises(self, tmp_path, traversal_name):
@@ -236,7 +234,6 @@ class TestDependencyPins:
             data = tomllib.load(f)
 
         dependencies = data.get("project", {}).get("dependencies", [])
-        dep_names = {d.split("==")[0].split(">=")[0].split(">")[0].split("[")[0].strip().lower() for d in dependencies}
         pinned_exact = {d.split("==")[0].strip().lower() for d in dependencies if "==" in d}
 
         required_pins = {"urllib3", "werkzeug", "starlette", "cryptography"}
@@ -289,3 +286,191 @@ class TestDashboardAuth:
 
         config = SerenaConfig(gui_log_window=False, web_dashboard=False)
         assert config.web_dashboard_listen_address == "127.0.0.1"
+
+
+# ---------------------------------------------------------------------------
+# SEC-005 — Path traversal edge cases (symlinks, encoded sequences)
+# ---------------------------------------------------------------------------
+
+
+class TestPathTraversalEdgeCases:
+    """Extended traversal coverage: symlink escapes, spaces in paths, URL-encoded dots."""
+
+    def _make_manager(self, tmp_path: pathlib.Path):
+        from serena.project import MemoriesManager
+
+        return MemoriesManager(serena_data_folder=str(tmp_path / ".serena"))
+
+    def test_symlink_pointing_outside_memory_dir_is_rejected(self, tmp_path):
+        """A symlink inside the memory dir that points outside must be rejected on read."""
+        mgr = self._make_manager(tmp_path)
+        # Bootstrap the memories directory by accessing a valid path first.
+        memory_dir = tmp_path / ".serena" / "memories"
+        memory_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create a sensitive file outside the tree.
+        outside = tmp_path / "secret.txt"
+        outside.write_text("top-secret")
+
+        # Symlink inside the memory dir pointing outside.
+        # The manager appends ".md" to every name, so the symlink must also use ".md".
+        link = memory_dir / "escape.md"
+        link.symlink_to(outside)
+
+        # load_memory("escape") resolves to memory_dir/escape.md → outside/secret.txt.
+        # The path validation uses resolve() which follows symlinks — the resolved
+        # path will be outside the memory root and must be rejected.
+        with pytest.raises((ValueError, PermissionError)):
+            mgr.load_memory("escape")
+
+    @pytest.mark.parametrize(
+        "traversal_name",
+        [
+            "foo bar/../../etc/passwd",  # spaces in path component
+            "a/b/../../../etc/shadow",  # multi-level with sibling
+            "./../../etc/hosts",  # leading dot-slash
+        ],
+    )
+    def test_traversal_with_spaces_and_dots_raises(self, tmp_path, traversal_name):
+        mgr = self._make_manager(tmp_path)
+        with pytest.raises((ValueError, PermissionError)):
+            mgr.get_memory_file_path(traversal_name)
+
+    def test_url_encoded_traversal_is_not_accepted(self, tmp_path):
+        """URL-encoded '..' (%2e%2e) must not bypass validation."""
+        mgr = self._make_manager(tmp_path)
+        # The file system won't decode %2e, so this becomes a literal filename —
+        # verify it resolves *inside* the memory dir (no escape), not outside.
+        # If the name is somehow decoded and escapes, the test fails.
+        path = mgr.get_memory_file_path("%2e%2e/etc/passwd")
+        memory_dir = (tmp_path / ".serena" / "memories").resolve()
+        # Either it raises (strict mode) or the path stays inside memory_dir.
+        assert path.resolve().is_relative_to(memory_dir), "URL-encoded traversal '%2e%2e' must not escape the memory directory"
+
+
+# ---------------------------------------------------------------------------
+# SEC-006 — Extended shell metacharacter injection
+# ---------------------------------------------------------------------------
+
+
+class TestShellInjectionEdgeCases:
+    """Additional shell injection vectors: &&, ||, newlines, hex escapes."""
+
+    def test_double_ampersand_is_blocked(self):
+        """'&&' (AND-list) must be rejected."""
+        from serena.util.shell import execute_shell_command
+
+        with tempfile.TemporaryDirectory() as workdir:
+            probe = pathlib.Path(workdir) / "pwned.txt"
+            with pytest.raises(ValueError, match="shell metacharacter"):
+                execute_shell_command(f"echo ok && touch {probe}", cwd=workdir)
+            assert not probe.exists()
+
+    def test_double_pipe_is_blocked(self):
+        """'||' (OR-list) must be rejected."""
+        from serena.util.shell import execute_shell_command
+
+        with tempfile.TemporaryDirectory() as workdir:
+            with pytest.raises(ValueError, match="shell metacharacter"):
+                execute_shell_command("false || echo injected", cwd=workdir)
+
+    def test_newline_injection_is_blocked(self):
+        """A command containing a literal newline (multi-command) must be rejected."""
+        from serena.util.shell import execute_shell_command
+
+        with tempfile.TemporaryDirectory() as workdir:
+            probe = pathlib.Path(workdir) / "newline_pwned.txt"
+            with pytest.raises(ValueError, match="shell metacharacter"):
+                execute_shell_command(f"echo ok\ntouch {probe}", cwd=workdir)
+            assert not probe.exists()
+
+    def test_hex_escape_injection_is_blocked(self):
+        r"""A command containing \xNN hex escape must be rejected."""
+        from serena.util.shell import execute_shell_command
+
+        with tempfile.TemporaryDirectory() as workdir:
+            with pytest.raises(ValueError, match="shell metacharacter"):
+                execute_shell_command(r"echo $'\x3btouch /tmp/x'", cwd=workdir)
+
+
+# ---------------------------------------------------------------------------
+# SEC-007 — No-shell mode (trust level enforcement)
+# ---------------------------------------------------------------------------
+
+
+class TestNoShellMode:
+    """execute_shell_command must be blocked when shell execution is disabled."""
+
+    def setup_method(self):
+        from serena.util.shell import set_shell_enabled
+
+        # Ensure shell is enabled before each test (reset any prior state).
+        set_shell_enabled(True)
+
+    def teardown_method(self):
+        from serena.util.shell import set_shell_enabled
+
+        # Always restore shell to enabled so other tests are unaffected.
+        set_shell_enabled(True)
+
+    def test_shell_disabled_raises_permission_error(self):
+        from serena.util.shell import execute_shell_command, set_shell_enabled
+
+        set_shell_enabled(False)
+        with pytest.raises(PermissionError, match="no-shell mode"):
+            execute_shell_command("echo hello")
+
+    def test_shell_re_enabled_allows_execution(self):
+        from serena.util.shell import execute_shell_command, set_shell_enabled
+
+        set_shell_enabled(False)
+        set_shell_enabled(True)
+        with tempfile.TemporaryDirectory() as workdir:
+            result = execute_shell_command("echo ok", cwd=workdir)
+        assert result.return_code == 0
+
+    def test_is_shell_enabled_reflects_state(self):
+        from serena.util.shell import is_shell_enabled, set_shell_enabled
+
+        set_shell_enabled(False)
+        assert not is_shell_enabled()
+        set_shell_enabled(True)
+        assert is_shell_enabled()
+
+
+# ---------------------------------------------------------------------------
+# SEC-008 — Atomic write integrity
+# ---------------------------------------------------------------------------
+
+
+class TestAtomicWrites:
+    """Memory saves must be atomic: no partial file left behind on failure."""
+
+    def _make_manager(self, tmp_path: pathlib.Path):
+        from serena.project import MemoriesManager
+
+        return MemoriesManager(serena_data_folder=str(tmp_path / ".serena"))
+
+    def test_save_memory_creates_file(self, tmp_path):
+        mgr = self._make_manager(tmp_path)
+        mgr.save_memory("note", "hello world", is_tool_context=False)
+        path = mgr.get_memory_file_path("note")
+        assert path.exists()
+        assert path.read_text() == "hello world"
+
+    def test_save_memory_backup_created_on_overwrite(self, tmp_path):
+        mgr = self._make_manager(tmp_path)
+        mgr.save_memory("note", "v1", is_tool_context=False)
+        mgr.save_memory("note", "v2", is_tool_context=False)
+        path = mgr.get_memory_file_path("note")
+        bak = path.with_suffix(".bak")
+        assert bak.exists(), "Backup file must be created before overwriting"
+        assert bak.read_text() == "v1", "Backup must contain the previous content"
+        assert path.read_text() == "v2", "Main file must contain the new content"
+
+    def test_no_stray_tmp_file_after_save(self, tmp_path):
+        mgr = self._make_manager(tmp_path)
+        mgr.save_memory("note", "content", is_tool_context=False)
+        memory_dir = tmp_path / ".serena" / "memories"
+        tmp_files = list(memory_dir.glob("*.tmp"))
+        assert not tmp_files, f"Stray .tmp files found after save: {tmp_files}"
