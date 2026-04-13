@@ -279,3 +279,25 @@ Initial public version
 * **shell-injection (S-1 HIGH):** add `_SHELL_METACHAR_RE` guard in `util/shell.py::execute_shell_command()` — raises `ValueError` on `;`, `|`, `&`, `` ` ``, `$(` before any subprocess is created; prevents prompt-injected payloads from exfiltrating data or executing arbitrary commands
 * **path-traversal (S-2 MEDIUM):** add `MemoriesManager._validate_memory_path()` in `project.py` using `Path.resolve()` + `relative_to()` — memory file paths are validated against the memory root directory before any read/write operation
 * **test coverage:** add `test/serena/test_security.py` with 21 tests covering S-1 through S-4 scenarios
+
+## [v0.1.5] (2026-04-13) — celstnblacc/serena fork
+
+### Added
+
+* **`serena doctor [--json]`**: new CLI subcommand for environment health checks. Reports: serena home directory, config file parse status, registered project directory availability, language server binary presence per project language, and shell execution state. `--json` outputs structured JSON for machine consumption (e.g. `token-diet gain`).
+* **`--no-shell` flag** on `start-mcp-server`: disables `execute_shell_command` at server startup. Serena refuses all shell execution requests — recommended for read-only or untrusted contexts.
+* **`set_shell_enabled()`** / **`is_shell_enabled()`** in `util/shell.py`: public API for toggling and querying the shell execution trust level at runtime.
+
+### Changed
+
+* **Atomic writes** (`save_memory`, `save_yaml`, `_save_edited_file`): all three write paths now use `tempfile.mkstemp` + `os.replace` — prevents partial file corruption on crash or interrupt.
+* **Memory backup on overwrite** (`save_memory`): before overwriting an existing memory file a `.bak` copy is created — provides a single recovery point.
+* **Language server pre-flight validation** (`LanguageServerProcess.start`): validates the LS binary is on PATH before spawning, raises `SolidLSPException` with remediation hints instead of a cryptic `Popen` failure.
+* **Extended metacharacter blocking** (`util/shell.py`): `&&`, `||`, `\n`, `\r`, and hex/octal shell escapes (`\xNN`, `\NNN`) added to `_SHELL_METACHAR_RE`.
+
+### Security
+
+* **SEC-005**: symlink escape in memory directory now caught by `resolve()` path validation
+* **SEC-006**: `&&`, `||`, newline, and hex-escape injection vectors blocked by extended `_SHELL_METACHAR_RE`
+* **SEC-007**: `--no-shell` mode / trust level enforcement with 3 regression tests
+* **SEC-008**: atomic write integrity verified by 3 new tests

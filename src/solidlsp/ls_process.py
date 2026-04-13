@@ -175,6 +175,39 @@ class LanguageServerProcess:
         """
         return self.process is not None and self.process.returncode is None
 
+    @staticmethod
+    def _validate_ls_binary(cmd: str | list[str]) -> None:
+        """Validate that the language server binary is available on PATH before launching.
+
+        Provides a clear error message with remediation hints instead of a cryptic
+        Popen failure when the language server is not installed.
+        """
+        import shutil
+
+        # Extract the binary name from the command (first token of string or list).
+        if isinstance(cmd, list):
+            binary = cmd[0] if cmd else ""
+        else:
+            binary = cmd.split()[0] if cmd.strip() else ""
+
+        if not binary:
+            return  # nothing to validate
+
+        # Skip validation for absolute paths that already exist.
+        if os.path.isabs(binary) and os.path.isfile(binary):
+            return
+
+        if shutil.which(binary) is None:
+            raise SolidLSPException(
+                f"Language server binary '{binary}' not found on PATH. "
+                "Install the required language server and ensure it is on your PATH. "
+                "Common installations:\n"
+                "  npm install -g <server>   (Node-based servers)\n"
+                "  pip install <server>      (Python-based servers)\n"
+                "  brew install <server>     (macOS via Homebrew)\n"
+                f"After installing, verify with: which {binary}"
+            )
+
     def start(self) -> None:
         """
         Starts the language server process and creates a task to continuously read from its stdout to handle communications
@@ -184,6 +217,10 @@ class LanguageServerProcess:
         child_proc_env.update(self.process_launch_info.env)
 
         cmd = self.process_launch_info.cmd
+        # Validate binary availability before attempting to spawn — gives a clear
+        # actionable error instead of a cryptic Popen/shell failure.
+        self._validate_ls_binary(cmd)
+
         is_windows = platform.system() == "Windows"
         if not isinstance(cmd, str) and not is_windows:
             # Since we are using the shell, we need to convert the command list to a single string
