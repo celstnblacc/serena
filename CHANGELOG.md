@@ -272,6 +272,11 @@ Fixes:
 
 Initial public version
 
+## [Unreleased]
+
+### Changed
+- Added `.serena/` to `.gitignore` (Serena MCP cache directory)
+
 ## [v0.1.4-security.1] (2026-04-01) — celstnblacc/serena fork
 
 ### Security

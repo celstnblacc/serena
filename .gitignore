@@ -271,3 +271,4 @@ cabal.project.local*
 
 zz-misc/
 vue-implementation/
+.serena/
