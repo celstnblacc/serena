@@ -301,3 +301,4 @@ Initial public version
 * **SEC-006**: `&&`, `||`, newline, and hex-escape injection vectors blocked by extended `_SHELL_METACHAR_RE`
 * **SEC-007**: `--no-shell` mode / trust level enforcement with 3 regression tests
 * **SEC-008**: atomic write integrity verified by 3 new tests
+- 2026-04-27: fix(cli): support deprecated --headless alias for MCP host compatibility
