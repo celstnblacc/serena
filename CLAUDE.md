@@ -23,6 +23,35 @@ Available pytest markers for selective testing:
 
 **Always run format, type-check, and test before completing any task.**
 
+## Claude Code Integration
+
+To use Serena as an MCP server in Claude Code, install locally and create a pyenv-aware wrapper:
+
+```bash
+# Install from this repo
+pip install -e ~/DevOpsSec/serena
+
+# Create wrapper (Claude Code doesn't init pyenv shims)
+cat > ~/.local/bin/serena-mcp << 'EOF'
+#!/bin/bash
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+exec serena-mcp-server "$@"
+EOF
+chmod +x ~/.local/bin/serena-mcp
+```
+
+Add to `~/.claude.json` (under `mcpServers`):
+```json
+"serena": {
+  "command": "serena-mcp",
+  "args": ["--project-from-cwd", "--context=claude-code", "--log-level=WARNING"],
+  "env": {"SERENA_NO_TELEMETRY": "1"},
+  "type": "stdio"
+}
+```
+
 ## Architecture Overview
 
 Serena is a dual-layer coding agent toolkit:

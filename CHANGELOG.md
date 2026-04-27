@@ -284,3 +284,4 @@ Initial public version
 * **shell-injection (S-1 HIGH):** add `_SHELL_METACHAR_RE` guard in `util/shell.py::execute_shell_command()` — raises `ValueError` on `;`, `|`, `&`, `` ` ``, `$(` before any subprocess is created; prevents prompt-injected payloads from exfiltrating data or executing arbitrary commands
 * **path-traversal (S-2 MEDIUM):** add `MemoriesManager._validate_memory_path()` in `project.py` using `Path.resolve()` + `relative_to()` — memory file paths are validated against the memory root directory before any read/write operation
 * **test coverage:** add `test/serena/test_security.py` with 21 tests covering S-1 through S-4 scenarios
+- 2026-04-27: docs: add Claude Code MCP integration with pyenv wrapper
