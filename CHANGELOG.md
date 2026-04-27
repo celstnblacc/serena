@@ -285,3 +285,4 @@ Initial public version
 * **path-traversal (S-2 MEDIUM):** add `MemoriesManager._validate_memory_path()` in `project.py` using `Path.resolve()` + `relative_to()` — memory file paths are validated against the memory root directory before any read/write operation
 * **test coverage:** add `test/serena/test_security.py` with 21 tests covering S-1 through S-4 scenarios
 - 2026-04-27: docs: add Claude Code MCP integration with pyenv wrapper
+- 2026-04-27: fix(cli): support deprecated --headless alias for MCP host compatibility

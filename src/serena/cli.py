@@ -219,6 +219,12 @@ class TopLevelCommands(AutoRegisteringGroup):
         help="Open Serena's dashboard in your browser after MCP server startup (overriding the setting in Serena's config).",
     )
     @click.option(
+        "--headless",
+        is_flag=True,
+        default=False,
+        help="[DEPRECATED] Alias for --open-web-dashboard false.",
+    )
+    @click.option(
         "--log-level",
         type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]),
         default=None,
@@ -244,6 +250,7 @@ class TopLevelCommands(AutoRegisteringGroup):
         port: int,
         enable_web_dashboard: bool | None,
         open_web_dashboard: bool | None,
+        headless: bool,
         enable_gui_log_window: bool | None,
         log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] | None,
         trace_lsp_communication: bool | None,
@@ -278,6 +285,12 @@ class TopLevelCommands(AutoRegisteringGroup):
                 log.info("Auto-detected project root: %s", project)
             else:
                 log.warning("No project root found from %s; not activating any project", os.getcwd())
+
+        if headless:
+            if open_web_dashboard is True:
+                raise click.UsageError("--headless cannot be used with --open-web-dashboard true")
+            open_web_dashboard = False
+            log.warning("--headless is deprecated; use --open-web-dashboard false")
 
         project_file = project_file_arg or project
         factory = SerenaMCPFactory(context=context, project=project_file, memory_log_handler=memory_log_handler)

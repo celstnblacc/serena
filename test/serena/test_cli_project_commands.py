@@ -342,6 +342,17 @@ class TestProjectFromCwdMutualExclusivity:
         assert "cannot be used with" in result.output
 
 
+class TestHeadlessCompatibility:
+    """Tests for deprecated --headless compatibility behavior."""
+
+    def test_headless_conflicts_with_open_web_dashboard_true(self, cli_runner):
+        result = cli_runner.invoke(
+            TopLevelCommands.start_mcp_server,
+            ["--headless", "--open-web-dashboard", "true"],
+        )
+        assert result.exit_code != 0
+        assert "cannot be used with" in result.output
+
 if __name__ == "__main__":
     # For manual testing, you can run this file directly:
     # uv run pytest test/serena/test_cli_project_commands.py -v
