@@ -302,3 +302,4 @@ Initial public version
 * **SEC-007**: `--no-shell` mode / trust level enforcement with 3 regression tests
 * **SEC-008**: atomic write integrity verified by 3 new tests
 - 2026-04-27: fix(cli): support deprecated --headless alias for MCP host compatibility
+- 2026-05-07: feat: setup-keylogger.sh for keylogger-mcp-wrapper registration
