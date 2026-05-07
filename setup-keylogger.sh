@@ -100,5 +100,5 @@ PYEOF
 fi
 
 echo ""
-ok "Done. Check logs at ~/.keylogger-mcp/proxy/serena/"
+ok "Done. Check logs at \$HOME/.keylogger-mcp/proxy/serena/"
 info "Restart your MCP client to pick up the changes."
