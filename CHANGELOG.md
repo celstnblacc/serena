@@ -303,3 +303,4 @@ Initial public version
 * **SEC-008**: atomic write integrity verified by 3 new tests
 - 2026-04-27: fix(cli): support deprecated --headless alias for MCP host compatibility
 - 2026-05-07: feat: setup-keylogger.sh for keylogger-mcp-wrapper registration
+- 2026-05-08: chore!: delete setup-keylogger.sh. Wrapping is now keylogger-mcp's job (v0.2.0+ owns `wrap`/`unwrap`/`status` CLI). Migration: install keylogger-mcp and run `keylogger-mcp wrap <host> serena` per host. Aligns with tilth v0.7.0, token-diet v1.9.0, obsidian-semantic-mcp v0.11.0, voice-toolkit v0.6.0.
