@@ -71,6 +71,12 @@ RUN sed -i 's/^web_dashboard_open_on_launch: .*/web_dashboard_open_on_launch: Fa
 RUN uv venv
 RUN . .venv/bin/activate
 RUN uv pip install -r pyproject.toml -e .
+
+# Patch: fix anyio.wrap_file() EOF bug in MCP stdio transport
+# Replaces async stdin wrapper with blocking readline() to survive
+# transient client disconnects.  See modelcontextprotocol/python-sdk#2549.
+COPY patches/stdio.py .venv/lib/python3.11/site-packages/mcp/server/stdio.py
+
 ENV PATH="/workspaces/serena/.venv/bin:${PATH}"
 
 # Entrypoint to ensure environment is activated

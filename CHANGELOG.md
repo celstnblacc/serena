@@ -2,6 +2,12 @@
 
 Status of the `main` branch. Changes prior to the next official version change will appear here.
 
+* MCP stdio transport:
+    * Vendored patch (`patches/stdio.py`, applied via Dockerfile) replaces the async
+      `anyio.wrap_file()` stdin wrapper with a blocking `readline()` so the server
+      survives transient client disconnects instead of hitting an EOF crash.
+      See modelcontextprotocol/python-sdk#2549.
+
 * Memories:
     * Add `ignored_memory_patterns` configuration option (regex-based) to completely exclude
       matching memories from listing, reading, and writing. Configurable at both global
