@@ -13,13 +13,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `uv run poe lint` - Check code style without fixing
 
 **Test Markers:**
-Available pytest markers for selective testing:
-- `python`, `go`, `java`, `rust`, `typescript`, `vue`, `php`, `perl`, `powershell`, `csharp`, `elixir`, `terraform`, `clojure`, `swift`, `bash`, `ruby`, `ruby_solargraph`
+Available pytest markers for selective testing (43 language markers as of v0.1.6):
+- Core: `python`, `go`, `java`, `kotlin`, `groovy`, `rust`, `typescript`, `vue`, `php`, `perl`, `powershell`, `csharp`, `elixir`, `elm`, `terraform`, `clojure`, `swift`, `bash`, `ruby`, `r`, `zig`, `lua`, `luau`, `nix`, `dart`, `erlang`, `ocaml`, `scala`, `al`, `fsharp`, `rego`, `markdown`, `julia`, `fortran`, `haskell`, `yaml`, `pascal`, `cpp`, `toml`, `matlab`, `systemverilog`, `hlsl`, `lean4`, `solidity`, `ansible`
 - `snapshot` - for symbolic editing operation tests
+- `slow` - tests requiring extra Expert instances (~60-90s startup)
 
 **Project Management:**
+- `uv run serena` - Main CLI entry point (top-level command)
 - `uv run serena-mcp-server` - Start MCP server from project root
-- `uv run index-project` - Index project for faster tool performance
+- `uv run index-project` - Index project for faster tool performance (deprecated alias)
 
 **Always run format, type-check, and test before completing any task.**
 
@@ -101,7 +103,7 @@ Configuration is loaded from (in order of precedence):
 - **Symbol-based editing** - Uses LSP for precise code manipulation
 - **Caching strategy** - Reduces language server overhead
 - **Error recovery** - Automatic language server restart on crashes
-- **Multi-language support** - 19 languages with LSP integration (including Vue)
+- **Multi-language support** - 43+ languages with LSP integration (including Vue, Solidity, Ansible, Lean 4)
 - **MCP protocol** - Exposes tools to AI agents via Model Context Protocol
 - **Async operation** - Non-blocking language server interactions
 
@@ -112,3 +114,17 @@ Configuration is loaded from (in order of precedence):
 - Language servers run as separate processes with LSP communication
 - Memory system enables persistent project knowledge
 - Context/mode system allows workflow customization
+
+## Guardrails
+
+- This is a **fork** of [oraios/serena](https://github.com/oraios/serena). Upstream URL: `https://github.com/oraios/serena`. Fork: `celstnblacc/serena`.
+- Security fixes (S-1 shell injection, S-2 path traversal) in `util/shell.py` and `project.py` must not be reverted. Verify with `pytest test/serena/test_security.py` after any change to those files.
+- Never push directly to `main`. Feature branches only.
+- Never edit `.env`, credentials, or secret files.
+- Run `uv run poe format && uv run poe type-check && uv run poe test` before any commit.
+- `index-project` is a deprecated alias for the `serena index` subcommand -- prefer the `serena` CLI.
+- Do not add dependencies without pinning exact versions (security constraint; see `pyproject.toml` pattern).
+
+## Strict Installation Decoupling
+
+Once installed (e.g., to ~/.local/bin), the project binary must NEVER depend on the local repository path for execution, configuration, or data. All paths must be relative to the installation root or use standard system config paths (~/.config).
